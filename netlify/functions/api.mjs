@@ -50,6 +50,7 @@ function fitAliceText(value) {
 function isSearchIntent(text) {
   return /\b(latest|today|current|news|weather|price|exchange rate|recent|search|look up)\b|сегодня|сейчас|последн|новост|погод|курс валют|найди|поищи|актуальн|сколько стоит|свежие данные/i.test(text);
 }
+
 const HANDOFF_TEXT = "Это дело обычной Алисы, отключаю навык \"Умный помощник\", выполняю запрос.";
 
 const NATIVE_ALICE_PATTERNS = [
@@ -68,6 +69,7 @@ const NATIVE_ALICE_PATTERNS = [
 function isNativeAliceCommand(text) {
   return NATIVE_ALICE_PATTERNS.some(pattern => pattern.test(text));
 }
+
 function safeHistory(history) {
   if (!Array.isArray(history)) return [];
   return history
@@ -89,39 +91,45 @@ async function fetchJson(url, options, timeoutMs) {
 }
 
 async function searchWeb(query, timeoutMs) {
-  const key = process.env.SERPER_API_KEY;
+  const key = process.env.TAVILY_API_KEY;
   if (!key || timeoutMs < 150) return "";
 
   try {
     const { response, data } = await fetchJson(
-      "https://google.serper.dev/search",
+      "https://api.tavily.com/search",
       {
         method: "POST",
-        headers: { "X-API-KEY": key, "Content-Type": "application/json" },
-        body: JSON.stringify({ q: query, gl: "ru", hl: "ru", num: 3 })
+        headers: {
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          query,
+          search_depth: "basic",
+          max_results: 3,
+          include_answer: false
+        })
       },
       Math.min(SERPER_TIMEOUT_MS, timeoutMs)
     );
 
     if (!response.ok) {
-      console.warn("Serper request failed with HTTP", response.status);
+      console.warn("Search request failed with HTTP", response.status);
       return "";
     }
 
-    const items = (Array.isArray(data.organic) ? data.organic : [])
+    const items = (Array.isArray(data.results) ? data.results : [])
       .slice(0, 3)
       .map((item, i) => {
         const title = String(item.title || "").slice(0, 180);
-        const snippet = String(item.snippet || "").slice(0, 350);
-        const link = String(item.link || "").slice(0, 240);
-        return `${i + 1}. ${title}: ${snippet} ${link}`.trim();
+        const content = String(item.content || "").slice(0, 350);
+        const link = String(item.url || "").slice(0, 240);
+        return `${i + 1}. ${title}: ${content} ${link}`.trim();
       });
 
-    const answerBox = data.answerBox?.answer || data.answerBox?.snippet;
-    if (answerBox) items.unshift(`Краткий ответ поисковика: ${String(answerBox).slice(0, 350)}`);
     return items.length ? items.join("\n") : "";
   } catch (error) {
-    console.warn("Serper request did not finish in time; continuing without search.");
+    console.warn("Search request did not finish in time; continuing without search.");
     return "";
   }
 }
@@ -234,12 +242,14 @@ export default async (req) => {
       oldHistory
     ));
   }
+
   if (isNativeAliceCommand(text)) {
     return json(aliceResponse(HANDOFF_TEXT, true, []));
   }
+
   try {
     let searchContext = "";
-    if (isSearchIntent(text) && process.env.SERPER_API_KEY) {
+    if (isSearchIntent(text) && process.env.TAVILY_API_KEY) {
       searchContext = await searchWeb(text, Math.min(SERPER_TIMEOUT_MS, Math.max(0, remainingMs() - 2600)));
     }
 
