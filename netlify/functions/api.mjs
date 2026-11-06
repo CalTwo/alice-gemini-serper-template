@@ -50,7 +50,24 @@ function fitAliceText(value) {
 function isSearchIntent(text) {
   return /\b(latest|today|current|news|weather|price|exchange rate|recent|search|look up)\b|сегодня|сейчас|последн|новост|погод|курс валют|найди|поищи|актуальн|сколько стоит|свежие данные/i.test(text);
 }
+const HANDOFF_TEXT = "Это дело обычной Алисы, отключаю навык \"Умный помощник\", выполняю запрос.";
 
+const NATIVE_ALICE_PATTERNS = [
+  // музыка и радио
+  /(включи|поставь|запусти|сыграй|поиграй|врубай|хочу послушать|давай послушаем)\s+(.*\s)?(музык|песн|трек|радио|альбом|плейлист|яндекс музык|подкаст)/i,
+  /(следующий|предыдущий)\s+(трек|песн)|(поставь|включи)\s+на\s+паузу|что\s+сейчас\s+играет|что\s+это\s+за\s+(песня|трек)/i,
+  // таймеры, будильники, напоминания
+  /(поставь|установи|заведи|включи|засеки|разбуди)\s+(.*\s)?(таймер|будильник|секундомер)/i,
+  /(поставь|создай|добавь|напомни)\s+(.*\s)?(напоминани)|напомни\s+мне/i,
+  // умный дом
+  /(включи|выключи|зажги|потуши|открой|закрой|запусти|останови)\s+(.*\s)?(свет|лампу|лампочку|люстру|телевизор|кондиционер|розетку|пылесос|шторы|жалюзи|увлажнитель|вентилятор)/i,
+  // громкость
+  /(сделай\s+)?(погромче|потише|громче|тише)|(выключи|включи)\s+звук|поставь\s+громкость/i
+];
+
+function isNativeAliceCommand(text) {
+  return NATIVE_ALICE_PATTERNS.some(pattern => pattern.test(text));
+}
 function safeHistory(history) {
   if (!Array.isArray(history)) return [];
   return history
@@ -217,7 +234,9 @@ export default async (req) => {
       oldHistory
     ));
   }
-
+  if (isNativeAliceCommand(text)) {
+    return json(aliceResponse(HANDOFF_TEXT, true, []));
+  }
   try {
     let searchContext = "";
     if (isSearchIntent(text) && process.env.SERPER_API_KEY) {
